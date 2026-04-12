@@ -2,18 +2,18 @@
 # directory.
 {
   lib,
-  system,
   callPackage,
   nodejs_20,
   nodejs,
   python3,
   darwin,
-  nodePackages,
+  node-gyp,
   installShellFiles,
   makeWrapper,
   stdenv,
 }:
 let
+  system = stdenv.hostPlatform.system;
   mkNodeDerivation = callPackage ./build-support/mkNodeDerivation.nix { };
   mkNativeDerivation = callPackage ./build-support/mkNativeDerivation.nix { };
 
@@ -24,7 +24,7 @@ let
 
     # Native build inputs needed for better-sqlite3
     extraNativeBuildInputs = [
-      nodePackages.node-gyp
+      node-gyp
       python3
       makeWrapper
       installShellFiles
@@ -38,6 +38,7 @@ let
         rm $out/bin/spago
         ln -s $out/lib/node_modules/spago/${binPath} $out/lib/node_modules/spago/bin/spago
         makeWrapper ${nodejs}/bin/node $out/bin/spago \
+          --add-flags --disable-warning=ExperimentalWarning \
           --add-flags $out/lib/node_modules/spago/bin/spago
 
         installShellCompletion --cmd spago \
@@ -53,8 +54,22 @@ let
       mkDrv = mkNativeDerivation {
         pname = "purs";
         binaryPath = "purs";
-        # purs >= 0.15.16-7 is statically linked
-        needsPatching = version: lib.versionOlder version "0.15.16-7";
+        # 0.15.16-7 and later Linux releases are statically linked.
+        needsPatching =
+          version:
+          let
+            parts = lib.splitString "-" version;
+            baseVersion = builtins.head parts;
+            prerelease = if builtins.length parts > 1 then builtins.elemAt parts 1 else null;
+          in
+          if lib.versionOlder baseVersion "0.15.16" then
+            true
+          else if lib.versionOlder "0.15.16" baseVersion then
+            false
+          else if prerelease == null then
+            false
+          else
+            builtins.compareVersions prerelease "7" < 0;
         meta = {
           description = "Compiler for a strongly-typed language that compiles to JavaScript";
           homepage = "https://github.com/purescript/purescript";
